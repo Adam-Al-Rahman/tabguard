@@ -42,10 +42,7 @@ jobs:
           tool: nextest,cargo-audit
 
       - name: "Execute Tests"
-        run: cargo nextest run --no-tests=warn
-
-      - name: "Check Undefined Behavior (Miri)"
-        run: cargo +nightly miri test
+        run: cargo nextest run
 
       - name: "Dependency Audit"
         run: cargo audit

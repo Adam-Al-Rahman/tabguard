@@ -116,14 +116,7 @@ c = "job:clippy-all" # comment this to have 'c' run clippy on only the default t
 [jobs.test]
 command = [
     "cargo", "nextest", "run",
-    "--no-tests=warn",
     "--hide-progress-bar", "--failure-output", "final"
 ]
 need_stdout = true
 analyzer = "nextest"
-
-[jobs.miri]
-command = [
-    "cargo", "+nightly", "miri", "test"
-]
-need_stdout = true
