@@ -9,7 +9,7 @@ tasks:
   test:
     desc: "Run unit, integration, and documentation tests."
     cmds:
-      - cargo nextest run --no-tests=warn
+      - cargo nextest run
 
   check:
     desc: "Lightning-fast AST validation."
@@ -26,15 +26,10 @@ tasks:
     cmds:
       - cargo +nightly fmt
 
-  miri:
-    desc: "Check for Undefined Behavior using Miri."
-    cmds:
-      - cargo +nightly miri test
-
   run:
-    desc: "Check syntax, then execute the binary."
+    desc: "Run Tabguard with the supplied CLI arguments."
     cmds:
-      - cargo run --color always
+      - cargo run --color always -- {{.CLI_ARGS}}
 
   debug:
     desc: "Build the development binary and start the Rust debugger."
