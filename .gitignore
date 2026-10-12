@@ -1,0 +1,64 @@
+# === Cargo / Build Artifacts ===
+/target/
+/tmp/cargo-targets/
+**/*.rs.bk
+*.pdb
+*.obj
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.class
+
+# === Environment & Secrets ===
+.env
+.env.*
+!.env.example
+.secrets/
+
+# === Profiling & Debugging ===
+# Trace data from `rr`
+/rr_trace/
+# Valgrind / Callgrind
+callgrind.out.*
+# Perf
+perf.data
+perf.data.old
+# Coverage
+*.profraw
+*.profdata
+tarpaulin-report.html
+cobertura.xml
+
+# === IDEs / Editors ===
+# Neovim / Vim
+*.swp
+*.swo
+*~
+Session.vim
+.netrwhist
+# VS Code
+.vscode/
+*.code-workspace
+# IntelliJ / CLion
+.idea/
+*.iml
+# Rust Analyzer
+.rust-analyzer/
+rust-project.json
+
+# === Local CI / Task Automation ===
+# Act local runner
+.act/
+# Taskfile local overrides (if any)
+Taskfile.local.yaml
+
+# === OS Generated ===
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

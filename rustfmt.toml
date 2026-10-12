@@ -1,0 +1,15 @@
+# Lock the formatter to the current Rust edition
+edition = "2024"
+
+# Automatically format Rust code written inside /// documentation comments
+format_code_in_doc_comments = true
+
+# Group imports cleanly (e.g., std libs first, external crates next, local modules last)
+group_imports = "StdExternalCrate"
+
+# Merge multiple imports from the same crate into a single line
+imports_granularity = "Crate"
+
+# Auto-wrap comments at 100 characters so they don't break multiplexer panes
+wrap_comments = true
+unstable_features = true

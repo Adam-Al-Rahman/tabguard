@@ -1,0 +1,65 @@
+version: '3'
+
+tasks:
+  build:
+    desc: "Build the project."
+    cmds:
+      - cargo build
+
+  test:
+    desc: "Run unit, integration, and documentation tests."
+    cmds:
+      - cargo nextest run --no-tests=warn
+
+  check:
+    desc: "Lightning-fast AST validation."
+    cmds:
+      - cargo check --color always
+
+  clippy:
+    desc: "Run lints and enforce rules across all targets."
+    cmds:
+      - cargo clippy --all-targets -- -D warnings
+
+  fmt:
+    desc: "Format the codebase."
+    cmds:
+      - cargo +nightly fmt
+
+  miri:
+    desc: "Check for Undefined Behavior using Miri."
+    cmds:
+      - cargo +nightly miri test
+
+  run:
+    desc: "Check syntax, then execute the binary."
+    cmds:
+      - cargo run --color always
+
+  debug:
+    desc: "Build the development binary and start the Rust debugger."
+    cmds:
+      - cargo build
+      - rust-lldb /tmp/cargo-targets/tabguard/debug/tabguard
+
+  rr:
+    desc: "Build the development binary and record an execution with rr."
+    cmds:
+      - cargo build
+      - rr record /tmp/cargo-targets/tabguard/debug/tabguard
+
+  ci:
+    desc: "Reproduce the CI environment locally using act."
+    cmds:
+      - act pull_request
+
+  security:
+    desc: "Audit dependencies and scan for secrets."
+    cmds:
+      - cargo audit
+      - betterleaks detect
+
+  release:
+    desc: "Build the production-ready binary with max optimizations."
+    cmds:
+      - cargo build --release --locked

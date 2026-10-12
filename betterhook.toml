@@ -1,0 +1,22 @@
+[meta]
+version = 1
+
+[hooks.pre-commit]
+fail_fast = true
+parallel = true
+priority = [
+  "verify_formatting",
+  "enforce_clippy",
+  "detect_secrets",
+]
+
+[hooks.pre-commit.jobs.verify_formatting]
+run = "cargo +nightly fmt --check"
+fix = "cargo +nightly fmt"
+stage_fixed = true
+
+[hooks.pre-commit.jobs.enforce_clippy]
+run = "cargo clippy -- -D warnings"
+
+[hooks.pre-commit.jobs.detect_secrets]
+run = "betterleaks detect"
