@@ -26,6 +26,11 @@ tasks:
     cmds:
       - cargo +nightly fmt
 
+  fmt-changed:
+    desc: "Format changed Rust files"
+    cmds:
+      - jj --config-file=jj-fix.toml fix -s @
+
   run:
     desc: "Run Tabguard with the supplied CLI arguments."
     cmds:

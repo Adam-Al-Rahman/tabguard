@@ -1,4 +1,7 @@
-use std::process::{Command, Output};
+use std::{
+    path::Path,
+    process::{Command, Output},
+};
 
 fn run_tabguard(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_tabguard"))
@@ -60,4 +63,283 @@ fn unknown_argument_is_rejected() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("--unknown"));
+}
+
+#[test]
+fn inspect_reports_headers_and_record_count_without_printing_rows() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/customers.csv");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tabguard"))
+        .arg("inspect")
+        .arg(&path)
+        .output()
+        .expect("failed to execute Tabguard");
+
+    assert!(
+        output.status.success(),
+        "inspect failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Columns: 3"));
+    assert!(stdout.contains("  1. customer_id"));
+    assert!(stdout.contains("  2. email"));
+    assert!(stdout.contains("  3. age"));
+    assert!(stdout.contains("Data records: 3"));
+
+    assert!(
+        !stdout.contains("ada@example.test"),
+        "inspect must not print row values"
+    );
+}
+
+#[test]
+fn inspect_reports_duplicate_headers_and_column_positions() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/duplicate_headers.csv");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tabguard"))
+        .arg("inspect")
+        .arg(&path)
+        .output()
+        .expect("failed to execute Tabguard");
+
+    assert!(
+        output.status.success(),
+        "inspect failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Columns: 3"));
+    assert!(stdout.contains("Data records: 1"));
+    assert!(stdout.contains("Duplicate headers:"));
+
+    assert!(
+        stdout
+            .lines()
+            .any(|line| line == r#" "id": columns 1 and 3"#),
+        "expected duplicate header with column positions, actual output:\n{stdout}"
+    );
+
+    assert!(
+        !stdout.contains("ada@example.test"),
+        "insepct must not print row values"
+    );
+}
+
+#[test]
+fn inspect_handles_an_empty_file() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/empty.csv");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tabguard"))
+        .arg("inspect")
+        .arg(&path)
+        .output()
+        .expect("failed to execute Tabguard");
+
+    assert!(
+        output.status.success(),
+        "inpsect failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Columns: 0"));
+    assert!(stdout.contains("Headers: (none, input contains no header record)"));
+    assert!(stdout.contains("Data records: 0"));
+}
+
+#[test]
+fn inspect_reports_headers_for_headers_only_csv() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/header_only.csv");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tabguard"))
+        .arg("inspect")
+        .arg(&path)
+        .output()
+        .expect("failed to execute Tabguard");
+
+    assert!(
+        output.status.success(),
+        "inspect failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Columns: 3"));
+    assert!(stdout.contains("  1. customer_id"));
+    assert!(stdout.contains("  2. email"));
+    assert!(stdout.contains("  3. age"));
+    assert!(stdout.contains("Data records: 0"));
+}
+
+#[test]
+fn inspect_rejects_records_with_inconsistent_field_counts() {
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/inconsistent_records.csv");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tabguard"))
+        .arg("inspect")
+        .arg(&path)
+        .output()
+        .expect("failed to execute Tabguard");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "expected an input-processing error"
+    );
+
+    assert!(
+        output.stdout.is_empty(),
+        "failed inspection must not print a successful report"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("tabguard:"),
+        "expected an actionable error message; actual stderr:\n{stderr}"
+    );
+
+    assert!(
+        stderr.contains("inconsistent_records.csv"),
+        "error should identify the input file"
+    );
+
+    assert!(
+        !stderr.contains("ada@example.test"),
+        "error diagnostics must not expose cell values"
+    );
+}
+
+#[test]
+fn inspect_counts_multiline_quoted_fields_as_one_record() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/multiline_records.csv");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tabguard"))
+        .arg("inspect")
+        .arg(&path)
+        .output()
+        .expect("failed to execute Tabguard");
+
+    assert!(
+        output.status.success(),
+        "inspect failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Columns: 2"));
+    assert!(stdout.contains("Data records: 2"));
+
+    assert!(
+        !stdout.contains("first line"),
+        "inspect must not print cell values"
+    );
+
+    assert!(
+        !stdout.contains("ordinary note"),
+        "inspect must not print cell values"
+    );
+}
+
+#[test]
+fn inspect_reports_a_missing_file_as_an_operational_error() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/missing.csv");
+
+    assert!(
+        !path.exists(),
+        "the missing-file test fixture must not exist"
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_tabguard"))
+        .arg("inspect")
+        .arg(&path)
+        .output()
+        .expect("failed to execute Tabguard");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "expected exit code 2 for a missing input file"
+    );
+
+    assert!(
+        output.stdout.is_empty(),
+        "a failed inspection must not print a successful report"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        stderr.contains("tabguard:"),
+        "expected a contextual error; actual stderr:\n{stderr}"
+    );
+
+    assert!(
+        stderr.contains("missing.csv"),
+        "error should identify the input file; actual stderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn inspect_rejects_an_unterminated_quoted_field() {
+    let output = run_tabguard(&["inspect", "tests/fixtures/unterminated_quote.csv"]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("tabguard:"));
+    assert!(stderr.contains("unterminated_quote.csv"));
+}
+
+#[test]
+fn inspect_accepts_escaped_quotes_inside_quoted_fields() {
+    let output = run_tabguard(&["inspect", "tests/fixtures/escaped_quotes.csv"]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Data records: 1"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn inspect_rejects_a_quote_inside_an_unquoted_field() {
+    let output = run_tabguard(&["inspect", "tests/fixtures/quote_in_unquoted_field.csv"]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("tabguard:"));
+    assert!(stderr.contains("quote_in_unquoted_field.csv"));
+}
+
+#[test]
+fn inspect_rejects_characters_after_a_closing_quote() {
+    let output = run_tabguard(&[
+        "inspect",
+        "tests/fixtures/characters_after_closing_quote.csv",
+    ]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("tabguard:"));
+    assert!(stderr.contains("characters_after_closing_quote.csv"));
 }

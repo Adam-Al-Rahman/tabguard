@@ -1,0 +1,3 @@
+[fix.tools.rustfmt]
+command = ["rustfmt", "+nightly"]
+patterns = ["glob:**/*.rs"]
