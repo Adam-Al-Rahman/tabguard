@@ -18,6 +18,17 @@ Use Task for explicit project tasks and Bacon for continuous feedback during dev
 
 Run `task --list` to inspect the available tasks.
 
+## Usage
+
+Inspect a CSV dataset:
+
+```bash
+tabguard inspect path/to/data.csv
+```
+The `inspect` command reports the column headers, number of data records,
+and duplicate header names. It does not infer column types or validate
+data-quality rules.
+
 ## Project Goals
 
 * [ ] Support declarative, version-controlled data-quality contracts.
