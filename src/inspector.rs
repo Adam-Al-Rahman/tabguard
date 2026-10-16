@@ -32,7 +32,7 @@ impl<R> QuoteValidationReader<R> {
         }
     }
 
-    fn fail<T>(&mut self, message: String) -> io::Result<T> {
+    fn fail(&mut self, message: String) -> io::Result<usize> {
         self.failure = Some(message.clone());
 
         Err(io::Error::new(io::ErrorKind::InvalidData, message))
