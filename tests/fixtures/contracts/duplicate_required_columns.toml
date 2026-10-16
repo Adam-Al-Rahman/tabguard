@@ -1,0 +1,5 @@
+version = 1
+name = "customers with duplicate columns"
+
+[schema]
+required_columns = ["customer_id", "email", "email"]

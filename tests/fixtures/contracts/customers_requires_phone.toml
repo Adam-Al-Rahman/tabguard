@@ -1,0 +1,5 @@
+version = 1
+name = "customers with phone"
+
+[schema]
+required_columns = ["customer_id", "email", "phone"]

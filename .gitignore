@@ -62,3 +62,7 @@ Taskfile.local.yaml
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+
+# === Local Debug ===
+.bacon-locations

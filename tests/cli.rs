@@ -343,3 +343,78 @@ fn inspect_rejects_characters_after_a_closing_quote() {
     assert!(stderr.contains("tabguard:"));
     assert!(stderr.contains("characters_after_closing_quote.csv"));
 }
+
+#[test]
+fn validate_passes_when_required_columns_are_present() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/customers.csv",
+        "--contract",
+        "tests/fixtures/contracts/customers.toml",
+    ]);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(stdout.contains("Validation: PASS"));
+    assert!(!stdout.contains("ada@example.test"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_fails_when_a_required_column_is_missing() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/customers.csv",
+        "--contract",
+        "tests/fixtures/contracts/customers_requires_phone.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Validation: FAIL"));
+    assert!(stdout.contains("Required columns present: 2/3"));
+    assert!(stdout.contains("Missing required columns:"));
+    assert!(stdout.contains("phone"));
+
+    assert!(
+        !stdout.contains("ada@example.test"),
+        "validation must not print individual cell values"
+    );
+
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_exits_with_code_two_when_contract_is_missing() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/customers.csv",
+        "--contract",
+        "tests/fixtures/contracts/missing.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "a validation report must not be printed when the contract cannot be loaded",
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("tabguard:"));
+    assert!(stderr.contains("missing.toml"));
+}
