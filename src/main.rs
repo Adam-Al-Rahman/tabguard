@@ -5,7 +5,9 @@ use std::{
 
 use clap::{Parser, Subcommand};
 
+mod contract;
 mod inspector;
+mod validator;
 
 /// Validate CSV dataset against declarative data-quality contracts.
 #[derive(Debug, Parser)]
@@ -23,21 +25,16 @@ enum Commands {
         #[arg(value_name = "CSV_PATH")]
         path: PathBuf,
     },
-}
+    /// Validate the content of the CSV dataset.
+    Validate {
+        /// Path to the input CSV file.
+        #[arg(value_name = "CSV_PATH")]
+        path: PathBuf,
 
-fn main() -> ExitCode {
-    let cli = Cli::parse();
-    let result = match cli.command {
-        Commands::Inspect { path } => inspect(&path),
-    };
-
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("tabguard: {error}");
-            ExitCode::from(2)
-        }
-    }
+        /// Path to the contract file.
+        #[arg(long, value_name = "CONTRACT_PATH")]
+        contract: PathBuf,
+    },
 }
 
 fn inspect(path: &Path) -> Result<(), inspector::InspectionError> {
@@ -67,4 +64,55 @@ fn inspect(path: &Path) -> Result<(), inspector::InspectionError> {
     }
 
     Ok(())
+}
+
+fn validate(path: &Path, contract_path: &Path) -> ExitCode {
+    let report = match validator::validate_csv(path, contract_path) {
+        Ok(report) => report,
+        Err(error) => {
+            eprintln!("tabguard: {error}");
+            return ExitCode::from(2);
+        }
+    };
+
+    let passed = report.missing_columns.is_empty();
+
+    println!("Validation: {}", if passed { "PASS" } else { "FAIL" });
+    println!("Contract: {}", report.contract_name);
+    println!(
+        "Required columns present: {}/{}",
+        report.present_required_columns, report.required_columns
+    );
+    println!("Data records: {}", report.data_records);
+
+    if passed {
+        return ExitCode::SUCCESS;
+    }
+
+    println!("Missing required columns:");
+
+    for column in &report.missing_columns {
+        println!("  - {column}");
+    }
+
+    ExitCode::from(1)
+}
+
+fn report_result<T, E: std::fmt::Display>(result: Result<T, E>) -> ExitCode {
+    match result {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("tabguard: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Inspect { path } => report_result(inspect(&path)),
+        Commands::Validate { path, contract } => validate(&path, &contract),
+    }
 }

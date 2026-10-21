@@ -1,0 +1,5 @@
+version = 2
+name = "Future contract"
+
+[schema]
+required_columns = ["customer_id"]

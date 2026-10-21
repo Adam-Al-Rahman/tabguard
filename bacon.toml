@@ -120,3 +120,8 @@ command = [
 ]
 need_stdout = true
 analyzer = "nextest"
+
+[exports.locations]
+auto = true
+path = ".bacon-locations"
+line_format = "{kind} {path}:{line}:{column} {message}"
