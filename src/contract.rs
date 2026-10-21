@@ -17,10 +17,19 @@ pub(crate) struct SchemaContract {
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct CompletenessContract {
+    pub(crate) non_empty_columns: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Contract {
     pub(crate) version: u32,
     pub(crate) name: String,
     pub(crate) schema: SchemaContract,
+
+    #[serde(default)]
+    pub(crate) completeness: Option<CompletenessContract>,
 }
 
 #[derive(Debug)]
@@ -38,6 +47,14 @@ pub(crate) enum ContractError {
         version: u32,
     },
     DuplicateRequiredColumn {
+        path: PathBuf,
+        column: String,
+    },
+    DuplicateNonEmptyColumn {
+        path: PathBuf,
+        column: String,
+    },
+    CompletenessColumnNotRequired {
         path: PathBuf,
         column: String,
     },
@@ -78,6 +95,20 @@ impl fmt::Display for ContractError {
                     path.display()
                 )
             }
+            Self::DuplicateNonEmptyColumn { path, column } => {
+                write!(
+                    f,
+                    "duplicate non-empty column '{column}' in contract '{}'",
+                    path.display()
+                )
+            }
+            Self::CompletenessColumnNotRequired { path, column } => {
+                write!(
+                    f,
+                    "completeness column '{column}' must also appear in schema.required_columns in contract '{}'",
+                    path.display()
+                )
+            }
         }
     }
 }
@@ -87,7 +118,10 @@ impl Error for ContractError {
         match self {
             Self::ReadFile { source, .. } => Some(source),
             Self::ParseToml { source, .. } => Some(source),
-            Self::UnsupportedVersion { .. } | Self::DuplicateRequiredColumn { .. } => None,
+            Self::UnsupportedVersion { .. }
+            | Self::DuplicateRequiredColumn { .. }
+            | Self::DuplicateNonEmptyColumn { .. }
+            | Self::CompletenessColumnNotRequired { .. } => None,
         }
     }
 }
@@ -122,6 +156,31 @@ pub(crate) fn load_contract(path: &Path) -> Result<Contract, ContractError> {
         }
     }
 
+    if let Some(completeness) = &contract.completeness {
+        let mut seen_columns = HashSet::with_capacity(completeness.non_empty_columns.len());
+
+        for column in &completeness.non_empty_columns {
+            if !seen_columns.insert(column.as_str()) {
+                return Err(ContractError::DuplicateNonEmptyColumn {
+                    path: path.to_owned(),
+                    column: column.clone(),
+                });
+            }
+
+            if !contract
+                .schema
+                .required_columns
+                .iter()
+                .any(|required| required == column)
+            {
+                return Err(ContractError::CompletenessColumnNotRequired {
+                    path: path.to_owned(),
+                    column: column.clone(),
+                });
+            }
+        }
+    }
+
     Ok(contract)
 }
 
@@ -147,6 +206,7 @@ mod tests {
             contract.schema.required_columns,
             vec!["customer_id".to_owned(), "email".to_owned()]
         );
+        assert_eq!(contract.completeness, None);
     }
 
     #[test]
@@ -196,5 +256,45 @@ mod tests {
                 .to_string()
                 .contains("duplicate_required_columns.toml")
         )
+    }
+
+    #[test]
+    fn load_contract_parses_completeness_constraints() {
+        let contract = load_contract(&contract_fixture("customers_completeness.toml"))
+            .expect("completeness contract should parse");
+
+        let completeness = contract
+            .completeness
+            .expect("completeness section should be present");
+
+        assert_eq!(
+            completeness.non_empty_columns,
+            vec!["customer_id".to_owned(), "email".to_owned()]
+        );
+    }
+
+    #[test]
+    fn load_contract_rejects_completeness_column_not_required() {
+        let path = contract_fixture("completeness_column_not_required.toml");
+
+        let error =
+            load_contract(&path).expect_err("completeness columns must be required schema columns");
+
+        assert!(
+            error.to_string().contains("email"),
+            "error should identify the invalid column: {error}"
+        );
+    }
+
+    #[test]
+    fn load_contract_rejects_duplicate_non_empty_columns() {
+        let path = contract_fixture("duplicate_non_empty_columns.toml");
+
+        let error = load_contract(&path).expect_err("duplicate completeness columns should fail");
+
+        assert!(
+            error.to_string().contains("email"),
+            "error should identify the duplicated column: {error}"
+        );
     }
 }

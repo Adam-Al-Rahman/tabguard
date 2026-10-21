@@ -1,0 +1,8 @@
+version = 1
+name = "duplicate header check"
+
+[schema]
+required_columns = ["id", "email"]
+
+[completeness]
+non_empty_columns = ["id", "email"]

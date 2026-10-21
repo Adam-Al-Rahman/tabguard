@@ -1,0 +1,8 @@
+version = 1
+name = "duplicate completeness columns"
+
+[schema]
+required_columns = ["customer_id", "email"]
+
+[completeness]
+non_empty_columns = ["email", "email"]

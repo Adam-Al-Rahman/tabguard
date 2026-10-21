@@ -418,3 +418,79 @@ fn validate_exits_with_code_two_when_contract_is_missing() {
     assert!(stderr.contains("tabguard:"));
     assert!(stderr.contains("missing.toml"));
 }
+
+#[test]
+fn validate_fails_when_non_empty_columns_contain_blank_values() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/completeness_empty.csv",
+        "--contract",
+        "tests/fixtures/contracts/customers_completeness.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Validation: FAIL"));
+    assert!(stdout.contains("Non-empty value violations:"));
+    assert!(stdout.contains("email: 2"));
+    assert!(stdout.contains("Data records: 3"));
+
+    assert!(
+        !stdout.contains("ada@example.test"),
+        "validation reports must not print cell values"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_passes_when_non_empty_columns_are_populated() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/customers.csv",
+        "--contract",
+        "tests/fixtures/contracts/customers_completeness.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Validation: PASS"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_fails_when_csv_contains_duplicate_headers() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/duplicate_headers.csv",
+        "--contract",
+        "tests/fixtures/contracts/duplicate_header_completeness.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Validation: FAIL"));
+    assert!(stdout.contains("Duplicate headers:"));
+    assert!(stdout.contains("columns 1 and 3"));
+    assert!(output.stderr.is_empty());
+}
