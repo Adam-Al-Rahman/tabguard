@@ -121,10 +121,17 @@ pub(crate) struct DuplicateHeader {
 }
 
 #[derive(Debug)]
+pub(crate) struct NonEmptyColumnCount {
+    pub(crate) name: String,
+    pub(crate) non_empty_records: u64,
+}
+
+#[derive(Debug)]
 pub(crate) struct CsvInspection {
     pub(crate) headers: Vec<String>,
     pub(crate) data_records: u64,
     pub(crate) duplicate_headers: Vec<DuplicateHeader>,
+    pub(crate) non_empty_column_counts: Vec<NonEmptyColumnCount>,
 }
 
 #[derive(Debug)]
@@ -159,32 +166,83 @@ impl Error for InspectionError {
     }
 }
 
-pub(crate) fn inspect_csv(path: &Path) -> Result<CsvInspection, InspectionError> {
+pub(crate) fn inspect_csv_with_non_empty_columns(
+    path: &Path,
+    non_empty_columns: &[String],
+) -> Result<CsvInspection, InspectionError> {
     let file =
         File::open(path).map_err(|source| InspectionError::new(path, csv::Error::from(source)))?;
 
     let validating_reader = QuoteValidationReader::new(file);
     let mut reader = csv::Reader::from_reader(validating_reader);
+
     let header_record = reader
         .headers()
         .map_err(|source| InspectionError::new(path, source))?
         .clone();
 
     let headers: Vec<String> = header_record.iter().map(str::to_owned).collect();
+    let duplicate_headers = find_duplicate_headers(&headers);
 
+    // Find each requested column's index. A duplicated header is ambiguous,
+    // so do not count values for that column.
+    let selected_column_indices: Vec<Option<usize>> = non_empty_columns
+        .iter()
+        .map(|name| {
+            if duplicate_headers
+                .iter()
+                .any(|duplicate| duplicate.name.as_str() == name.as_str())
+            {
+                None
+            } else {
+                headers.iter().position(|header| header == name)
+            }
+        })
+        .collect();
+
+    let mut non_empty_records = vec![0_u64; non_empty_columns.len()];
     let mut data_records = 0_u64;
 
     for record in reader.records() {
-        record.map_err(|source| InspectionError::new(path, source))?;
+        let record = record.map_err(|source| InspectionError::new(path, source))?;
         data_records += 1;
+
+        for (count, column_index) in non_empty_records.iter_mut().zip(&selected_column_indices) {
+            let Some(column_index) = column_index else {
+                continue;
+            };
+
+            if record
+                .get(*column_index)
+                .is_some_and(|value| !value.trim().is_empty())
+            {
+                *count += 1;
+            }
+        }
     }
 
-    let duplicate_headers = find_duplicate_headers(&headers);
+    let non_empty_column_counts = non_empty_columns
+        .iter()
+        .zip(selected_column_indices)
+        .zip(non_empty_records)
+        .filter_map(|((name, column_index), non_empty_records)| {
+            column_index.map(|_| NonEmptyColumnCount {
+                name: name.clone(),
+                non_empty_records,
+            })
+        })
+        .collect();
+
     Ok(CsvInspection {
         headers,
         data_records,
         duplicate_headers,
+        non_empty_column_counts,
     })
+}
+
+pub(crate) fn inspect_csv(path: &Path) -> Result<CsvInspection, InspectionError> {
+    inspect_csv_with_non_empty_columns(path, &[])
 }
 
 fn find_duplicate_headers(headers: &[String]) -> Vec<DuplicateHeader> {

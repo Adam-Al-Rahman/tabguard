@@ -125,3 +125,4 @@ analyzer = "nextest"
 auto = true
 path = ".bacon-locations"
 line_format = "{kind} {path}:{line}:{column} {message}"
+listen = true

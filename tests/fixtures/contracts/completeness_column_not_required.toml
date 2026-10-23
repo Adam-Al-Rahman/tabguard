@@ -1,0 +1,8 @@
+version = 1
+name = "invalid completeness column"
+
+[schema]
+required_columns = ["customer_id"]
+
+[completeness]
+non_empty_columns = ["email"]

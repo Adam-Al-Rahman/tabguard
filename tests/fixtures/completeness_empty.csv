@@ -1,0 +1,4 @@
+customer_id,email,age
+1001,ada@example.test,37
+1002,,42
+1003,   ,30

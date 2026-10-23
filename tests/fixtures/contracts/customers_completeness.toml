@@ -1,0 +1,8 @@
+version = 1
+name = "customers completeness"
+
+[schema]
+required_columns = ["customer_id", "email"]
+
+[completeness]
+non_empty_columns = ["customer_id", "email"]

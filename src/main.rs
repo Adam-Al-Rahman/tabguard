@@ -75,7 +75,9 @@ fn validate(path: &Path, contract_path: &Path) -> ExitCode {
         }
     };
 
-    let passed = report.missing_columns.is_empty();
+    let passed = report.missing_columns.is_empty()
+        && report.duplicate_headers.is_empty()
+        && report.non_empty_violations.is_empty();
 
     println!("Validation: {}", if passed { "PASS" } else { "FAIL" });
     println!("Contract: {}", report.contract_name);
@@ -84,6 +86,25 @@ fn validate(path: &Path, contract_path: &Path) -> ExitCode {
         report.present_required_columns, report.required_columns
     );
     println!("Data records: {}", report.data_records);
+
+    if !report.duplicate_headers.is_empty() {
+        println!("Duplicate headers:");
+
+        for duplicate in &report.duplicate_headers {
+            println!(
+                "  {:?}: columns {} and {}",
+                duplicate.name, duplicate.first_column, duplicate.duplicate_column
+            );
+        }
+    }
+
+    if !report.non_empty_violations.is_empty() {
+        println!("Non-empty value violations:");
+
+        for violation in &report.non_empty_violations {
+            println!("  {}: {}", violation.column, violation.empty_values);
+        }
+    }
 
     if passed {
         return ExitCode::SUCCESS;
