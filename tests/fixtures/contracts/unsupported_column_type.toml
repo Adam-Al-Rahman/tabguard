@@ -1,0 +1,8 @@
+version = 1
+name = "unsupported_column_type"
+
+[schema]
+required_columns = ["age"]
+
+[types.columns]
+age = "integar"

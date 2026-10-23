@@ -1,11 +1,13 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     error::Error,
     fmt,
     fs::File,
     io::{self, Read},
     path::{Path, PathBuf},
 };
+
+use crate::contract::ColumnType;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum QuoteState {
@@ -127,11 +129,26 @@ pub(crate) struct NonEmptyColumnCount {
 }
 
 #[derive(Debug)]
+struct SelectedTypedColumn {
+    name: String,
+    column_type: ColumnType,
+    column_index: Option<usize>,
+    invalid_values: u64,
+}
+
+#[derive(Debug)]
+pub(crate) struct TypeColumnCount {
+    pub(crate) name: String,
+    pub(crate) invalid_values: u64,
+}
+
+#[derive(Debug)]
 pub(crate) struct CsvInspection {
     pub(crate) headers: Vec<String>,
     pub(crate) data_records: u64,
     pub(crate) duplicate_headers: Vec<DuplicateHeader>,
     pub(crate) non_empty_column_counts: Vec<NonEmptyColumnCount>,
+    pub(crate) type_column_counts: Vec<TypeColumnCount>,
 }
 
 #[derive(Debug)]
@@ -166,9 +183,10 @@ impl Error for InspectionError {
     }
 }
 
-pub(crate) fn inspect_csv_with_non_empty_columns(
+pub(crate) fn inspect_csv_with_constraints(
     path: &Path,
     non_empty_columns: &[String],
+    typed_columns: &BTreeMap<String, ColumnType>,
 ) -> Result<CsvInspection, InspectionError> {
     let file =
         File::open(path).map_err(|source| InspectionError::new(path, csv::Error::from(source)))?;
@@ -200,6 +218,28 @@ pub(crate) fn inspect_csv_with_non_empty_columns(
         })
         .collect();
 
+    let mut selected_typed_columns: Vec<SelectedTypedColumn> = typed_columns
+        .iter()
+        .map(|(name, column_type)| {
+            // Duplicate headers make a column name ambiguous.
+            let column_index = if duplicate_headers
+                .iter()
+                .any(|duplicate| duplicate.name.as_str() == name.as_str())
+            {
+                None
+            } else {
+                headers.iter().position(|header| header == name)
+            };
+
+            SelectedTypedColumn {
+                name: name.clone(),
+                column_type: *column_type,
+                column_index,
+                invalid_values: 0,
+            }
+        })
+        .collect();
+
     let mut non_empty_records = vec![0_u64; non_empty_columns.len()];
     let mut data_records = 0_u64;
 
@@ -219,7 +259,30 @@ pub(crate) fn inspect_csv_with_non_empty_columns(
                 *count += 1;
             }
         }
+
+        for column in &mut selected_typed_columns {
+            let Some(column_index) = column.column_index else {
+                continue;
+            };
+
+            let Some(value) = record.get(column_index) else {
+                continue;
+            };
+
+            if !value.trim().is_empty() && !is_valid_typed_value(column.column_type, value) {
+                column.invalid_values += 1;
+            }
+        }
     }
+
+    let type_column_counts = selected_typed_columns
+        .into_iter()
+        .filter(|column| column.column_index.is_some())
+        .map(|column| TypeColumnCount {
+            name: column.name,
+            invalid_values: column.invalid_values,
+        })
+        .collect();
 
     let non_empty_column_counts = non_empty_columns
         .iter()
@@ -238,11 +301,12 @@ pub(crate) fn inspect_csv_with_non_empty_columns(
         data_records,
         duplicate_headers,
         non_empty_column_counts,
+        type_column_counts,
     })
 }
 
 pub(crate) fn inspect_csv(path: &Path) -> Result<CsvInspection, InspectionError> {
-    inspect_csv_with_non_empty_columns(path, &[])
+    inspect_csv_with_constraints(path, &[], &BTreeMap::new())
 }
 
 fn find_duplicate_headers(headers: &[String]) -> Vec<DuplicateHeader> {
@@ -263,11 +327,27 @@ fn find_duplicate_headers(headers: &[String]) -> Vec<DuplicateHeader> {
     duplicates
 }
 
+fn is_valid_typed_value(column_type: ColumnType, value: &str) -> bool {
+    let value = value.trim();
+
+    match column_type {
+        ColumnType::Integer => value.parse::<i64>().is_ok(),
+        ColumnType::Number => {
+            matches!(value.parse::<f64>(), Ok(number) if number.is_finite())
+        }
+
+        ColumnType::Boolean => {
+            value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("false")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::{self, Cursor, Read};
 
-    use super::QuoteValidationReader;
+    use super::{QuoteValidationReader, is_valid_typed_value};
+    use crate::contract::ColumnType;
 
     #[test]
     fn quote_validator_accepts_valid_csv_across_one_byte_reads() {
@@ -317,5 +397,35 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn integer_values_must_fit_signed_64_bit_range() {
+        assert!(is_valid_typed_value(ColumnType::Integer, "42"));
+        assert!(is_valid_typed_value(ColumnType::Integer, " -42 "));
+        assert!(!is_valid_typed_value(ColumnType::Integer, "42.0"));
+        assert!(!is_valid_typed_value(
+            ColumnType::Integer,
+            "9223372036854775808"
+        ));
+    }
+
+    #[test]
+    fn number_values_must_be_finite() {
+        assert!(is_valid_typed_value(ColumnType::Number, "42"));
+        assert!(is_valid_typed_value(ColumnType::Number, "42.5"));
+        assert!(is_valid_typed_value(ColumnType::Number, "1e3"));
+        assert!(!is_valid_typed_value(ColumnType::Number, "NaN"));
+        assert!(!is_valid_typed_value(ColumnType::Number, "Infinity"));
+        assert!(!is_valid_typed_value(ColumnType::Number, "not_a_number"));
+    }
+
+    #[test]
+    fn boolean_values_are_case_insensitive() {
+        assert!(is_valid_typed_value(ColumnType::Boolean, "true"));
+        assert!(is_valid_typed_value(ColumnType::Boolean, " FALSE "));
+        assert!(is_valid_typed_value(ColumnType::Boolean, "TrUe"));
+        assert!(!is_valid_typed_value(ColumnType::Boolean, "yes"));
+        assert!(!is_valid_typed_value(ColumnType::Boolean, "1"));
     }
 }

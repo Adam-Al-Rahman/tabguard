@@ -1,4 +1,4 @@
-use std::{error::Error, fmt, path::Path};
+use std::{collections::BTreeMap, error::Error, fmt, path::Path};
 
 use crate::{
     contract::{self, ContractError},
@@ -12,6 +12,12 @@ pub(crate) struct NonEmptyColumnViolation {
 }
 
 #[derive(Debug)]
+pub(crate) struct TypeViolation {
+    pub(crate) column: String,
+    pub(crate) invalid_values: u64,
+}
+
+#[derive(Debug)]
 pub(crate) struct ValidationReport {
     pub(crate) contract_name: String,
     pub(crate) required_columns: usize,
@@ -20,6 +26,7 @@ pub(crate) struct ValidationReport {
     pub(crate) missing_columns: Vec<String>,
     pub(crate) duplicate_headers: Vec<inspector::DuplicateHeader>,
     pub(crate) non_empty_violations: Vec<NonEmptyColumnViolation>,
+    pub(crate) type_violations: Vec<TypeViolation>,
 }
 
 #[derive(Debug)]
@@ -64,14 +71,20 @@ pub(crate) fn validate_csv(
 ) -> Result<ValidationReport, ValidationError> {
     let contract = contract::load_contract(contract_path)?;
 
-    // Count values only in columns requested by the contract.
+    let empty_typed_columns = BTreeMap::new();
+
+    let typed_columns = contract
+        .types
+        .as_ref()
+        .map_or(&empty_typed_columns, |types| &types.columns);
+
     let inspection = {
         let non_empty_columns: &[String] =
             contract.completeness.as_ref().map_or(&[], |completeness| {
                 completeness.non_empty_columns.as_slice()
             });
 
-        inspector::inspect_csv_with_non_empty_columns(csv_path, non_empty_columns)?
+        inspector::inspect_csv_with_constraints(csv_path, non_empty_columns, typed_columns)?
     };
 
     let required_columns = contract.schema.required_columns;
@@ -86,6 +99,15 @@ pub(crate) fn validate_csv(
     let present_required_columns = required_columns.len() - missing_columns.len();
 
     let mut non_empty_violations = Vec::new();
+    let type_violations = inspection
+        .type_column_counts
+        .iter()
+        .filter(|count| count.invalid_values > 0)
+        .map(|count| TypeViolation {
+            column: count.name.clone(),
+            invalid_values: count.invalid_values,
+        })
+        .collect();
 
     for count in &inspection.non_empty_column_counts {
         let empty_values = inspection.data_records - count.non_empty_records;
@@ -106,5 +128,6 @@ pub(crate) fn validate_csv(
         missing_columns,
         duplicate_headers: inspection.duplicate_headers,
         non_empty_violations,
+        type_violations,
     })
 }

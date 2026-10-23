@@ -39,6 +39,7 @@ enum Commands {
 
 fn inspect(path: &Path) -> Result<(), inspector::InspectionError> {
     let report = inspector::inspect_csv(path)?;
+
     println!("File: {}", path.display());
     println!("Columns: {}", report.headers.len());
 
@@ -46,6 +47,7 @@ fn inspect(path: &Path) -> Result<(), inspector::InspectionError> {
         println!("Headers: (none, input contains no header record)");
     } else {
         println!("Headers:");
+
         for (index, name) in report.headers.iter().enumerate() {
             println!("  {}. {}", index + 1, name);
         }
@@ -55,6 +57,7 @@ fn inspect(path: &Path) -> Result<(), inspector::InspectionError> {
 
     if !report.duplicate_headers.is_empty() {
         println!("Duplicate headers:");
+
         for duplicate in &report.duplicate_headers {
             println!(
                 " {:?}: columns {} and {}",
@@ -77,7 +80,8 @@ fn validate(path: &Path, contract_path: &Path) -> ExitCode {
 
     let passed = report.missing_columns.is_empty()
         && report.duplicate_headers.is_empty()
-        && report.non_empty_violations.is_empty();
+        && report.non_empty_violations.is_empty()
+        && report.type_violations.is_empty();
 
     println!("Validation: {}", if passed { "PASS" } else { "FAIL" });
     println!("Contract: {}", report.contract_name);
@@ -106,17 +110,27 @@ fn validate(path: &Path, contract_path: &Path) -> ExitCode {
         }
     }
 
+    if !report.type_violations.is_empty() {
+        println!("Type violations:");
+
+        for violation in &report.type_violations {
+            println!("  {}: {}", violation.column, violation.invalid_values);
+        }
+    }
+
+    if !report.missing_columns.is_empty() {
+        println!("Missing required columns:");
+
+        for column in &report.missing_columns {
+            println!("  - {column}");
+        }
+    }
+
     if passed {
-        return ExitCode::SUCCESS;
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
     }
-
-    println!("Missing required columns:");
-
-    for column in &report.missing_columns {
-        println!("  - {column}");
-    }
-
-    ExitCode::from(1)
 }
 
 fn report_result<T, E: std::fmt::Display>(result: Result<T, E>) -> ExitCode {

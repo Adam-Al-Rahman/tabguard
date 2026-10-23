@@ -1,0 +1,8 @@
+version = 1
+name = "typed_column_not_required"
+
+[schema]
+required_columns = ["customer_id"]
+
+[types.columns]
+age = "number"

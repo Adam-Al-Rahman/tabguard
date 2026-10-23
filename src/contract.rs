@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     error::Error,
     fmt, fs,
     path::{Path, PathBuf},
@@ -21,6 +21,20 @@ pub(crate) struct CompletenessContract {
     pub(crate) non_empty_columns: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ColumnType {
+    Integer,
+    Number,
+    Boolean,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TypesContract {
+    pub(crate) columns: BTreeMap<String, ColumnType>,
+}
+
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Contract {
@@ -30,6 +44,9 @@ pub(crate) struct Contract {
 
     #[serde(default)]
     pub(crate) completeness: Option<CompletenessContract>,
+
+    #[serde(default)]
+    pub(crate) types: Option<TypesContract>,
 }
 
 #[derive(Debug)]
@@ -55,6 +72,10 @@ pub(crate) enum ContractError {
         column: String,
     },
     CompletenessColumnNotRequired {
+        path: PathBuf,
+        column: String,
+    },
+    TypeColumnNotRequired {
         path: PathBuf,
         column: String,
     },
@@ -109,6 +130,14 @@ impl fmt::Display for ContractError {
                     path.display()
                 )
             }
+
+            Self::TypeColumnNotRequired { path, column } => {
+                write!(
+                    f,
+                    "type column '{column}' must also appear in schema.required_columns in contract '{}'",
+                    path.display()
+                )
+            }
         }
     }
 }
@@ -121,7 +150,8 @@ impl Error for ContractError {
             Self::UnsupportedVersion { .. }
             | Self::DuplicateRequiredColumn { .. }
             | Self::DuplicateNonEmptyColumn { .. }
-            | Self::CompletenessColumnNotRequired { .. } => None,
+            | Self::CompletenessColumnNotRequired { .. }
+            | Self::TypeColumnNotRequired { .. } => None,
         }
     }
 }
@@ -145,10 +175,10 @@ pub(crate) fn load_contract(path: &Path) -> Result<Contract, ContractError> {
         });
     };
 
-    let mut seen_columns = HashSet::with_capacity(contract.schema.required_columns.len());
+    let mut required_columns = HashSet::with_capacity(contract.schema.required_columns.len());
 
     for column in &contract.schema.required_columns {
-        if !seen_columns.insert(column.as_str()) {
+        if !required_columns.insert(column.as_str()) {
             return Err(ContractError::DuplicateRequiredColumn {
                 path: path.to_owned(),
                 column: column.clone(),
@@ -167,12 +197,7 @@ pub(crate) fn load_contract(path: &Path) -> Result<Contract, ContractError> {
                 });
             }
 
-            if !contract
-                .schema
-                .required_columns
-                .iter()
-                .any(|required| required == column)
-            {
+            if !required_columns.contains(column.as_str()) {
                 return Err(ContractError::CompletenessColumnNotRequired {
                     path: path.to_owned(),
                     column: column.clone(),
@@ -181,6 +206,16 @@ pub(crate) fn load_contract(path: &Path) -> Result<Contract, ContractError> {
         }
     }
 
+    if let Some(types) = &contract.types {
+        for column in types.columns.keys() {
+            if !required_columns.contains(column.as_str()) {
+                return Err(ContractError::TypeColumnNotRequired {
+                    path: path.to_owned(),
+                    column: column.clone(),
+                });
+            }
+        }
+    }
     Ok(contract)
 }
 
@@ -188,7 +223,7 @@ pub(crate) fn load_contract(path: &Path) -> Result<Contract, ContractError> {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use super::{ContractError, load_contract};
+    use super::{ColumnType, ContractError, load_contract};
 
     fn contract_fixture(name: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -207,6 +242,7 @@ mod tests {
             vec!["customer_id".to_owned(), "email".to_owned()]
         );
         assert_eq!(contract.completeness, None);
+        assert_eq!(contract.types, None);
     }
 
     #[test]
@@ -295,6 +331,44 @@ mod tests {
         assert!(
             error.to_string().contains("email"),
             "error should identify the duplicated column: {error}"
+        );
+    }
+
+    #[test]
+    fn load_contract_parses_declared_column_types() {
+        let contract = load_contract(&contract_fixture("typed_customers.toml"))
+            .expect("valid typed contract should parse");
+
+        let types = contract.types.expect("types section should be present");
+
+        assert_eq!(types.columns.get("customer_id"), Some(&ColumnType::Integer));
+        assert_eq!(types.columns.get("age"), Some(&ColumnType::Number));
+        assert_eq!(types.columns.get("active"), Some(&ColumnType::Boolean));
+    }
+
+    #[test]
+    fn load_contract_rejects_unsupported_column_types() {
+        let error = load_contract(&contract_fixture("unsupported_column_type.toml"))
+            .expect_err("unsupported column type should fail");
+
+        assert!(
+            matches!(&error, ContractError::ParseToml { .. }),
+            "expected a TOML parsing error, got: {error}"
+        );
+    }
+
+    #[test]
+    fn load_contract_rejects_typed_column_that_is_not_required() {
+        let error = load_contract(&contract_fixture("typed_column_not_required.toml"))
+            .expect_err("typed column must also be required");
+
+        assert!(
+            matches!(
+                &error,
+                ContractError::TypeColumnNotRequired { column, .. }
+                    if column == "age"
+            ),
+            "expected TypeColumnNotRequired for 'age', got: {error}"
         );
     }
 }
