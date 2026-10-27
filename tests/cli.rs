@@ -494,3 +494,242 @@ fn validate_fails_when_csv_contains_duplicate_headers() {
     assert!(stdout.contains("columns 1 and 3"));
     assert!(output.stderr.is_empty());
 }
+
+#[test]
+fn validate_passes_when_typed_values_are_valid() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/typed_valid.csv",
+        "--contract",
+        "tests/fixtures/contracts/typed_customers.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Validation: PASS"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_reports_type_violation_counts_without_printing_values() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/typed_invalid.csv",
+        "--contract",
+        "tests/fixtures/contracts/typed_customers.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Validation: FAIL"));
+    assert!(stdout.contains("Type violations:"));
+    assert!(stdout.contains("active: 2"));
+    assert!(stdout.contains("age: 2"));
+    assert!(stdout.contains("customer_id: 2"));
+
+    for forbidden in [
+        "not_an_integer",
+        "9223372036854775808",
+        "NaN",
+        "Infinity",
+        "yes",
+    ] {
+        assert!(
+            !stdout.contains(forbidden),
+            "report must not expose cell value {forbidden:?}"
+        );
+    }
+
+    assert!(output.stderr.is_empty());
+
+    // Require stable alphabetical ordering in the type-violation section.
+    let active = stdout.find("active: 2").expect("active count missing");
+    let age = stdout.find("age: 2").expect("age count missing");
+    let customer_id = stdout
+        .find("customer_id: 2")
+        .expect("customer_id count missing");
+
+    assert!(active < age && age < customer_id);
+}
+
+#[test]
+fn validate_does_not_treat_blank_values_as_type_violations() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/typed_blank.csv",
+        "--contract",
+        "tests/fixtures/contracts/typed_customers.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Validation: PASS"));
+    assert!(!stdout.contains("Type violations:"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_fails_when_a_typed_column_header_is_missing() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/typed_missing_age.csv",
+        "--contract",
+        "tests/fixtures/contracts/typed_customers.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Validation: FAIL"));
+    assert!(stdout.contains("Missing required columns:"));
+    assert!(stdout.contains("age"));
+    assert!(!stdout.contains("Type violations:"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_passes_for_typed_headers_only_csv() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/typed_header_only.csv",
+        "--contract",
+        "tests/fixtures/contracts/typed_customers.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Validation: PASS"));
+    assert!(stdout.contains("Data records: 0"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_reports_blank_typed_values_as_completeness_violations() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/typed_blank.csv",
+        "--contract",
+        "tests/fixtures/contracts/typed_customers_completeness.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Validation: FAIL"));
+    assert!(stdout.contains("Non-empty value violations:"));
+    assert!(stdout.contains("age: 1"));
+    assert!(!stdout.contains("Type violations:"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_exits_with_code_two_for_unsupported_column_type() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/typed_valid.csv",
+        "--contract",
+        "tests/fixtures/contracts/unsupported_column_type.toml",
+    ]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        output.stdout.is_empty(),
+        "invalid contract must not produce a validation report"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("tabguard:"));
+    assert!(stderr.contains("unsupported_column_type.toml"));
+}
+
+#[test]
+fn validate_fails_schema_validation_for_empty_csv_with_typed_contract() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/empty.csv",
+        "--contract",
+        "tests/fixtures/contracts/typed_customers.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("Validation: FAIL"));
+    assert!(stdout.contains("Missing required columns:"));
+    assert!(stdout.contains("customer_id"));
+    assert!(stdout.contains("age"));
+    assert!(stdout.contains("active"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_exits_with_code_two_when_typed_column_is_not_required() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/typed_valid.csv",
+        "--contract",
+        "tests/fixtures/contracts/typed_column_not_required.toml",
+    ]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        output.stdout.is_empty(),
+        "invalid contract must not produce a validation report"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("tabguard:"));
+    assert!(stderr.contains("age"));
+}

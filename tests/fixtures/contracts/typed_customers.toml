@@ -1,0 +1,10 @@
+version = 1
+name = "typed_customers"
+
+[schema]
+required_columns = ["customer_id", "age", "active"]
+
+[types.columns]
+customer_id = "integer"
+age = "number"
+active = "boolean"

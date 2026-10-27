@@ -1,0 +1,4 @@
+customer_id,age,active
+1001,37,true
+-2,42.5,FALSE
+ 7 ,1e3,TrUe

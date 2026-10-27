@@ -1,0 +1,13 @@
+version = 1
+name = "typed_customers_completeness"
+
+[schema]
+required_columns = ["customer_id", "age", "active"]
+
+[completeness]
+non_empty_columns = ["age"]
+
+[types.columns]
+customer_id = "integer"
+age = "number"
+active = "boolean"
