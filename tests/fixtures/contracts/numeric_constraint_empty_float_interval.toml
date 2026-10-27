@@ -1,0 +1,12 @@
+version = 1
+name = "empty_float_interval"
+
+[schema]
+required_columns = ["score"]
+
+[types.columns]
+score = "number"
+
+[numeric_constraints.columns.score]
+min_exclusive = 1.0
+max_exclusive = 1.0000000000000002

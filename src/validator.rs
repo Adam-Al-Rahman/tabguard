@@ -18,6 +18,12 @@ pub(crate) struct TypeViolation {
 }
 
 #[derive(Debug)]
+pub(crate) struct NumericConstraintViolation {
+    pub(crate) column: String,
+    pub(crate) invalid_values: u64,
+}
+
+#[derive(Debug)]
 pub(crate) struct ValidationReport {
     pub(crate) contract_name: String,
     pub(crate) required_columns: usize,
@@ -27,6 +33,7 @@ pub(crate) struct ValidationReport {
     pub(crate) duplicate_headers: Vec<inspector::DuplicateHeader>,
     pub(crate) non_empty_violations: Vec<NonEmptyColumnViolation>,
     pub(crate) type_violations: Vec<TypeViolation>,
+    pub(crate) numeric_constraint_violations: Vec<NumericConstraintViolation>,
 }
 
 #[derive(Debug)]
@@ -72,6 +79,14 @@ pub(crate) fn validate_csv(
     let contract = contract::load_contract(contract_path)?;
 
     let empty_typed_columns = BTreeMap::new();
+    let empty_numeric_constraints = BTreeMap::new();
+
+    let numeric_constraints = contract
+        .numeric_constraints
+        .as_ref()
+        .map_or(&empty_numeric_constraints, |constraints| {
+            &constraints.columns
+        });
 
     let typed_columns = contract
         .types
@@ -84,7 +99,12 @@ pub(crate) fn validate_csv(
                 completeness.non_empty_columns.as_slice()
             });
 
-        inspector::inspect_csv_with_constraints(csv_path, non_empty_columns, typed_columns)?
+        inspector::inspect_csv_with_constraints(
+            csv_path,
+            non_empty_columns,
+            typed_columns,
+            numeric_constraints,
+        )?
     };
 
     let required_columns = contract.schema.required_columns;
@@ -104,6 +124,16 @@ pub(crate) fn validate_csv(
         .iter()
         .filter(|count| count.invalid_values > 0)
         .map(|count| TypeViolation {
+            column: count.name.clone(),
+            invalid_values: count.invalid_values,
+        })
+        .collect();
+
+    let numeric_constraint_violations = inspection
+        .numeric_constraint_counts
+        .iter()
+        .filter(|count| count.invalid_values > 0)
+        .map(|count| NumericConstraintViolation {
             column: count.name.clone(),
             invalid_values: count.invalid_values,
         })
@@ -129,5 +159,6 @@ pub(crate) fn validate_csv(
         duplicate_headers: inspection.duplicate_headers,
         non_empty_violations,
         type_violations,
+        numeric_constraint_violations,
     })
 }

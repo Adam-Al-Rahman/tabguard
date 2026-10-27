@@ -1,0 +1,11 @@
+version = 1
+name = "numeric_column_not_required"
+
+[schema]
+required_columns = ["customer_id"]
+
+[types.columns]
+age = "integer"
+
+[numeric_constraints.columns.age]
+min = 18

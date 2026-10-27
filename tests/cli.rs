@@ -10,6 +10,15 @@ fn run_tabguard(args: &[&str]) -> Output {
         .expect("failed to executed Tabguard")
 }
 
+fn run_numeric_validation(csv_path: &str) -> Output {
+    run_tabguard(&[
+        "validate",
+        csv_path,
+        "--contract",
+        "tests/fixtures/contracts/numeric_constraints.toml",
+    ])
+}
+
 #[test]
 fn help_displays_usage_and_available_options() {
     let output = run_tabguard(&["--help"]);
@@ -732,4 +741,242 @@ fn validate_exits_with_code_two_when_typed_column_is_not_required() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("tabguard:"));
     assert!(stderr.contains("age"));
+}
+
+#[test]
+fn validate_passes_when_numeric_constraints_are_satisfied() {
+    let output = run_numeric_validation("tests/fixtures/numeric_constraints_valid.csv");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(stdout.contains("Validation: PASS"));
+    assert!(!stdout.contains("Numeric constraint violations:"));
+    assert!(!stdout.contains("PRIVATE_ROW_001"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_reports_aggregated_numeric_constraint_violations() {
+    let output = run_numeric_validation("tests/fixtures/numeric_constraints_out_of_range.csv");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(stdout.contains("Validation: FAIL"));
+    assert!(stdout.contains("Numeric constraint violations:"));
+    assert!(stdout.contains("  age: 2"));
+    assert!(stdout.contains("  score: 2"));
+
+    assert!(!stdout.contains("PRIVATE_ROW_004"));
+    assert!(!stdout.contains("PRIVATE_ROW_005"));
+    assert!(!stdout.contains("PRIVATE_ROW_006"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_does_not_double_count_type_invalid_values_as_numeric_violations() {
+    let output = run_numeric_validation("tests/fixtures/numeric_constraints_invalid_types.csv");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(stdout.contains("Validation: FAIL"));
+
+    let (before_numeric, numeric_section) = stdout
+        .split_once("Numeric constraint violations:")
+        .expect("numeric constraint violation section should exist");
+
+    let type_section = before_numeric
+        .split_once("Type violations:")
+        .expect("type violation section should exist")
+        .1;
+
+    // Two values per column fail type validation.
+    assert!(
+        type_section.lines().any(|line| line.trim() == "age: 2"),
+        "expected two age type violations:\n{type_section}"
+    );
+
+    assert!(
+        type_section.lines().any(|line| line.trim() == "score: 2"),
+        "expected two score type violations:\n{type_section}"
+    );
+
+    // Only valid numeric values outside their bounds count here.
+    assert!(
+        numeric_section.lines().any(|line| line.trim() == "age: 1"),
+        "expected one age numeric constraint violation:\n{numeric_section}"
+    );
+
+    assert!(
+        numeric_section
+            .lines()
+            .any(|line| line.trim() == "score: 1"),
+        "expected one score numeric constraint violation:\n{numeric_section}"
+    );
+
+    // Reports must never expose individual cell values.
+    assert!(!stdout.contains("not_an_integer"));
+    assert!(!stdout.contains("9223372036854775808"));
+    assert!(!stdout.contains("Infinity"));
+
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_ignores_blank_values_for_numeric_constraints() {
+    let output = run_numeric_validation("tests/fixtures/numeric_constraints_blank.csv");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(stdout.contains("Validation: PASS"));
+    assert!(!stdout.contains("Type violations:"));
+    assert!(!stdout.contains("Numeric constraint violations:"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_reports_missing_numeric_constraint_headers_as_schema_failures() {
+    let output = run_numeric_validation("tests/fixtures/numeric_constraints_missing_header.csv");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(stdout.contains("Validation: FAIL"));
+    assert!(stdout.contains("Required columns present: 1/2"));
+    assert!(stdout.contains("Missing required columns:"));
+    assert!(stdout.contains("score"));
+
+    // The present constrained column is still validated.
+    assert!(stdout.contains("Numeric constraint violations:"));
+    assert!(stdout.contains("age: 1"));
+
+    assert!(!stdout.contains("PRIVATE_ROW_007"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_handles_duplicate_numeric_constraint_headers() {
+    let output = run_numeric_validation("tests/fixtures/numeric_constraints_duplicate_header.csv");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(stdout.contains("Validation: FAIL"));
+    assert!(stdout.contains("Duplicate headers:"));
+    assert!(stdout.contains("columns 1 and 2"));
+
+    // The unambiguous score column remains subject to validation.
+    assert!(stdout.contains("Numeric constraint violations:"));
+    assert!(stdout.contains("score: 1"));
+
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_passes_for_headers_only_numeric_csv() {
+    let output = run_numeric_validation("tests/fixtures/numeric_constraints_headers_only.csv");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(stdout.contains("Validation: PASS"));
+    assert!(stdout.contains("Data records: 0"));
+    assert!(!stdout.contains("Numeric constraint violations:"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn validate_exits_with_code_two_for_invalid_numeric_contracts() {
+    let output = run_tabguard(&[
+        "validate",
+        "tests/fixtures/numeric_constraints_valid.csv",
+        "--contract",
+        "tests/fixtures/contracts/numeric_constraint_empty.toml",
+    ]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(
+        output.stdout.is_empty(),
+        "invalid contracts must not produce validation reports"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(stderr.contains("tabguard:"));
+    assert!(stderr.contains("age"));
+}
+
+#[test]
+fn validate_exits_with_code_two_for_malformed_csv() {
+    let output = run_numeric_validation("tests/fixtures/numeric_constraints_malformed.csv");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(
+        output.stdout.is_empty(),
+        "malformed CSV must not produce a validation report"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(stderr.contains("tabguard:"));
+    assert!(stderr.contains("numeric_constraints_malformed.csv"));
 }

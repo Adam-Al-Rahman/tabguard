@@ -1,0 +1,11 @@
+version = 1
+name = "boolean_numeric_constraint"
+
+[schema]
+required_columns = ["active"]
+
+[types.columns]
+active = "boolean"
+
+[numeric_constraints.columns.active]
+min = 1

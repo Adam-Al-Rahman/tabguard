@@ -1,0 +1,12 @@
+version = 1
+name = "conflicting_lower_bounds"
+
+[schema]
+required_columns = ["age"]
+
+[types.columns]
+age = "integer"
+
+[numeric_constraints.columns.age]
+min = 18
+min_exclusive = 18

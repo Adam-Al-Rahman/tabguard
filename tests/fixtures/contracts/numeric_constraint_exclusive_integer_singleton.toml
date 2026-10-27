@@ -1,0 +1,12 @@
+version = 1
+name = "exclusive_integer_singleton"
+
+[schema]
+required_columns = ["age"]
+
+[types.columns]
+age = "integer"
+
+[numeric_constraints.columns.age]
+min_exclusive = 18
+max = 18

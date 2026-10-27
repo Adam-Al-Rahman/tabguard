@@ -4,54 +4,54 @@ tasks:
   build:
     desc: "Build the project."
     cmds:
-      - cargo build
+      - cargo build --locked
 
   test:
-    desc: "Run unit, integration, and documentation tests."
+    desc: "Run unit and integration tests with cargo-nextest."
     cmds:
-      - cargo nextest run
+      - cargo nextest run --locked
 
   check:
-    desc: "Lightning-fast AST validation."
+    desc: "Perform fast compile-time and type checks across all targets."
     cmds:
-      - cargo check --color always
+      - cargo check --all-targets --locked --color always
 
   clippy:
     desc: "Run lints and enforce rules across all targets."
     cmds:
-      - cargo clippy --all-targets -- -D warnings
+      - cargo clippy --all-targets --locked -- -D warnings
 
   fmt:
     desc: "Format the codebase."
     cmds:
-      - cargo +nightly fmt
+      - cargo +nightly fmt --all
 
   fmt-changed:
-    desc: "Format changed Rust files"
+    desc: "Format changed Rust files."
     cmds:
       - jj --config-file=jj-fix.toml fix -s @
 
   run:
     desc: "Run Tabguard with the supplied CLI arguments."
     cmds:
-      - cargo run --color always -- {{.CLI_ARGS}}
+      - cargo run --locked --color always -- {{.CLI_ARGS}}
 
   debug:
     desc: "Build the development binary and start the Rust debugger."
     cmds:
-      - cargo build
-      - rust-lldb /tmp/cargo-targets/tabguard/debug/tabguard
+      - cargo build --locked --bin tabguard
+      - rust-lldb target/debug/tabguard
 
   rr:
     desc: "Build the development binary and record an execution with rr."
     cmds:
-      - cargo build
-      - rr record /tmp/cargo-targets/tabguard/debug/tabguard
+      - cargo build --locked --bin tabguard
+      - rr record target/debug/tabguard
 
   ci:
-    desc: "Reproduce the CI environment locally using act."
+    desc: "Reproduce the CI workflow locally using act."
     cmds:
-      - act pull_request
+      - act pull_request -W .github/workflows/ci.yml
 
   security:
     desc: "Audit dependencies and scan for secrets."
@@ -60,6 +60,6 @@ tasks:
       - betterleaks detect
 
   release:
-    desc: "Build the production-ready binary with max optimizations."
+    desc: "Build the optimized production binary."
     cmds:
-      - cargo build --release --locked
+      - cargo build --release --locked --bin tabguard

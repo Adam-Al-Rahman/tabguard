@@ -1,0 +1,4 @@
+age,score
+not_an_integer,NaN
+9223372036854775808,Infinity
+17,-1

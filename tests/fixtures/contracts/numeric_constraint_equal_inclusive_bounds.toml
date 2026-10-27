@@ -1,0 +1,12 @@
+version = 1
+name = "equal_inclusive_bounds"
+
+[schema]
+required_columns = ["age"]
+
+[types.columns]
+age = "integer"
+
+[numeric_constraints.columns.age]
+min = 18
+max = 18
