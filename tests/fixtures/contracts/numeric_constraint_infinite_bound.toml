@@ -1,0 +1,11 @@
+version = 1
+name = "infinite_bound"
+
+[schema]
+required_columns = ["score"]
+
+[types.columns]
+score = "number"
+
+[numeric_constraints.columns.score]
+max = inf

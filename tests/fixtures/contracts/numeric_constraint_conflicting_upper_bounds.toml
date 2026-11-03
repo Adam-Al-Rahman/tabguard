@@ -1,0 +1,12 @@
+version = 1
+name = "conflicting_upper_bounds"
+
+[schema]
+required_columns = ["age"]
+
+[types.columns]
+age = "integer"
+
+[numeric_constraints.columns.age]
+max = 120
+max_exclusive = 120

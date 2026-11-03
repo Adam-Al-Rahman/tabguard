@@ -2,6 +2,13 @@
 name = "tabguard"
 version = "0.1.0"
 edition = "2024"
+description = "A Rust CLI for validating CSV datasets against declarative data-quality contracts."
+license = "MIT"
+repository = "https://github.com/Adam-Al-Rahman/tabguard"
+homepage = "https://github.com/Adam-Al-Rahman/tabguard"
+readme = "README.md"
+keywords = ["csv", "data-quality", "validation", "cli"]
+categories = ["command-line-utilities"]
 
 [profile.dev]
 incremental = false
@@ -18,3 +25,8 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 strip = "symbols"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

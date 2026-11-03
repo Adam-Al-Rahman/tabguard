@@ -1,0 +1,8 @@
+version = 1
+name = "untyped_numeric_constraint"
+
+[schema]
+required_columns = ["age"]
+
+[numeric_constraints.columns.age]
+min = 18

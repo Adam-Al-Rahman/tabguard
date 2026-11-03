@@ -81,7 +81,8 @@ fn validate(path: &Path, contract_path: &Path) -> ExitCode {
     let passed = report.missing_columns.is_empty()
         && report.duplicate_headers.is_empty()
         && report.non_empty_violations.is_empty()
-        && report.type_violations.is_empty();
+        && report.type_violations.is_empty()
+        && report.numeric_constraint_violations.is_empty();
 
     println!("Validation: {}", if passed { "PASS" } else { "FAIL" });
     println!("Contract: {}", report.contract_name);
@@ -114,6 +115,14 @@ fn validate(path: &Path, contract_path: &Path) -> ExitCode {
         println!("Type violations:");
 
         for violation in &report.type_violations {
+            println!("  {}: {}", violation.column, violation.invalid_values);
+        }
+    }
+
+    if !report.numeric_constraint_violations.is_empty() {
+        println!("Numeric constraint violations:");
+
+        for violation in &report.numeric_constraint_violations {
             println!("  {}: {}", violation.column, violation.invalid_values);
         }
     }

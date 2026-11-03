@@ -1,0 +1,10 @@
+version = 1
+name = "empty_numeric_constraint"
+
+[schema]
+required_columns = ["age"]
+
+[types.columns]
+age = "integer"
+
+[numeric_constraints.columns.age]

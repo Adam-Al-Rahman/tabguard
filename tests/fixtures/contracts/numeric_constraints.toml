@@ -1,0 +1,17 @@
+version = 1
+name = "numeric_customers"
+
+[schema]
+required_columns = ["age", "score"]
+
+[types.columns]
+age = "integer"
+score = "number"
+
+[numeric_constraints.columns.age]
+min = 18
+max = 120
+
+[numeric_constraints.columns.score]
+min_exclusive = 0.0
+max = 100.0

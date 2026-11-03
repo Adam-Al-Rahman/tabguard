@@ -27,9 +27,6 @@ jobs:
         with:
           components: "clippy"
 
-      - name: "Install Mold Linker"
-        uses: rui314/setup-mold@v1
-
       - name: "Verify Formatting"
         run: cargo +nightly fmt --check
 
